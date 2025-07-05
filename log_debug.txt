@@ -1,0 +1,5 @@
+2025-06-29 23:55:16 - 🧪 Intentando ejecutar mv.exe como administrador desde: C:\bots\bot_pesca_py\mv.exe
+2025-06-29 23:55:17 - ✅ mv.exe ejecutado correctamente como administrador.
+2025-06-29 23:55:39 - 🧹 MV cerrado, iniciando limpieza...
+2025-06-29 23:55:39 - ℹ️ No se encontraron archivos temporales que limpiar.
+2025-06-29 23:55:39 - ✅ Proceso finalizado con éxito.

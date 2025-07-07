@@ -13,15 +13,19 @@ def generar_fingerprint():
     datos = platform.node() + platform.version() + str(uuid.getnode())
     return hashlib.sha256(datos.encode()).hexdigest()
 
-def descifrar_img(input_file, progreso_callback=None):
-    temp_dir = tempfile.gettempdir()
-    os.makedirs(temp_dir, exist_ok=True)
+def escribir_serial_en_img(temp_dir, serial):
+    archivo_serial = os.path.join(temp_dir, "clave_licencia.txt")
+    with open(archivo_serial, "w") as f:
+        f.write(serial)
+    print(f"✅ Serial escrito en: {archivo_serial}")
+
+def descifrar_img(input_file, serial, progreso_callback=None):
+    temp_dir = tempfile.mkdtemp()
+    vfat_dir = tempfile.mkdtemp()  # <-- Nueva carpeta solo para montar
 
     fingerprint = generar_fingerprint()
     nombre_aleatorio = uuid.uuid4().hex[:16]
-    nombre_aleatorio_bat = uuid.uuid4().hex[:16]
-    output_img = os.path.join(temp_dir, f"{nombre_aleatorio}")  # sin extensión
-    output_bat = os.path.join(temp_dir, f"{nombre_aleatorio_bat}.bat")
+    output_img = os.path.join(temp_dir, f"{nombre_aleatorio}.img")
     lock_file = os.path.join(temp_dir, '.lock')
 
     with open(lock_file, 'w') as lock:
@@ -47,34 +51,11 @@ def descifrar_img(input_file, progreso_callback=None):
                 if progreso_callback:
                     progreso_callback(int(total_read / file_size * 100))
 
-    bat_content = f"""@echo off
-cd /d "{temp_dir}"
-if not exist ".lock" (
-    echo ❌ No se encontró archivo de validación. Saliendo...
-    pause
-    exit /b
-)
-for /f %%i in ('type ".lock"') do set "token=%%i"
-set "current={fingerprint}"
-if not "%token%"=="%current%" (
-    echo ❌ Entorno no autorizado. Abortando ejecución.
-    pause
-    exit /b
-)
-start "" /b "C:\\Program Files\\qemu\\qemu-system-x86_64.exe" ^
- -m 4096 ^
- -smp 2 ^
- -hda "{output_img}" ^
- -net nic ^
- -net user ^
- -display sdl ^
- -accel whpx
-"""
+    # ✅ Inyectar el serial en la carpeta VFAT (diferente a la del .img)
+    escribir_serial_en_img(vfat_dir, serial)
 
-    with open(output_bat, 'w', encoding="utf-8") as f:
-        f.write(bat_content)
-
+    # Guardar rutas para limpieza posterior
     with open(os.path.join(temp_dir, "rAZCuQEwYjKxV1yCc89cqMBu0keveY.tmp"), "w") as f:
-        f.write(f"{output_img}\n{output_bat}\n{lock_file}")
+        f.write(f"{output_img}\n{lock_file}\n{vfat_dir}")
 
-    return output_bat
+    return output_img, lock_file, vfat_dir, fingerprint

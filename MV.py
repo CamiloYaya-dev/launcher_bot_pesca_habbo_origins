@@ -1,3 +1,4 @@
+# ✅ MV.py (modificado completo y funcional)
 import os
 import subprocess
 import tkinter as tk
@@ -8,14 +9,26 @@ import platform
 import tempfile
 import traceback
 from threading import Thread
-from validador_licencia import validar_licencia
-from descifrador_img import descifrar_img
+import time
+import win32gui
+import win32con
+import win32process
+from validador_licencia import validar_licencia, set_actualizador_mensajes, set_callback_descarga_completa
+from descifrador_img import descifrar_img, generar_fingerprint
 
 QEMU_EXECUTABLE = r"C:\Program Files\qemu\qemu-system-x86_64.exe"
-ENC_FILE = os.path.join(os.path.dirname(sys.executable), "3ZuxE7bre0kypSqM76n5dkak7zZBu0")
+if getattr(sys, 'frozen', False):
+    BASE_PATH = os.path.dirname(sys.executable)
+else:
+    BASE_PATH = os.path.dirname(os.path.abspath(__file__))
+
+ENC_FILE = os.path.join(BASE_PATH, "3ZuxE7bre0kypSqM76n5dkak7zZBu0")
 estado_hypervisor_override = False
 log_file = os.path.join(os.getcwd(), "log_debug.txt")
 
+clave_usuario = ""
+
+# Inicializar root oculto
 root = tk.Tk()
 root.withdraw()
 
@@ -37,6 +50,11 @@ def log_error(msg):
     with open(log_file, "a", encoding="utf-8") as f:
         f.write(msg + "\n")
 
+def cuando_descarga_termine():
+    root.deiconify()
+
+set_callback_descarga_completa(cuando_descarga_termine)
+
 def pedir_y_validar_clave():
     try:
         while True:
@@ -46,6 +64,8 @@ def pedir_y_validar_clave():
                 return False
             resultado = validar_licencia(key.strip())
             if resultado["status"] == "valido":
+                global clave_usuario
+                clave_usuario = key.strip()
                 messagebox.showinfo("✅ Acceso concedido", f"Bienvenido: {resultado['usuario']}")
                 return True
             else:
@@ -59,6 +79,24 @@ def pedir_y_validar_clave():
 if not pedir_y_validar_clave():
     root.destroy()
     sys.exit()
+
+# Mostrar GUI principal (solo cuando se llame cuando_descarga_termine)
+
+root.title("Bot Fishing")
+root.geometry("560x600")
+
+frame_vm = tk.Frame(root, width=560, height=300, bg="black")
+frame_vm.pack(pady=10)
+
+tk.Label(root, text="Bot Fishing Habbo Origins - Entorno Seguro", font=("Arial", 14)).pack(pady=10)
+etiqueta_estado = tk.Label(root, text="🔃 Cargando...", font=("Arial", 10))
+etiqueta_estado.pack()
+
+def actualizar_mensaje_seguro(msg):
+    def tarea(): etiqueta_estado.config(text=msg)
+    root.after(0, tarea)
+
+set_actualizador_mensajes(actualizar_mensaje_seguro)
 
 def verificar_qemu():
     try:
@@ -91,23 +129,19 @@ def verificar_hypervisor():
 def actualizar_estado_botones(estado_qemu, estado_archivos, estado_hypervisor):
     boton_descargar_qemu.config(state=tk.DISABLED if estado_qemu else tk.NORMAL)
     boton_habilitar_hypervisor.config(state=tk.DISABLED if estado_hypervisor else tk.NORMAL)
-
     if estado_qemu and estado_archivos and estado_hypervisor:
         boton_iniciar.config(state=tk.NORMAL)
-        etiqueta_estado.config(text="✅ Todo listo para iniciar la máquina virtual.")
+        actualizar_mensaje_seguro("✅ Todo listo para iniciar la máquina virtual.")
     else:
         boton_iniciar.config(state=tk.DISABLED)
         faltantes = []
-        if not estado_qemu:
-            faltantes.append("QEMU")
-        if not estado_archivos:
-            faltantes.append("archivo cifrado")
-        if not estado_hypervisor:
-            faltantes.append("Hypervisor")
-        etiqueta_estado.config(text="⚠️ Faltan requisitos: " + ", ".join(faltantes))
+        if not estado_qemu: faltantes.append("QEMU")
+        if not estado_archivos: faltantes.append("archivo cifrado")
+        if not estado_hypervisor: faltantes.append("Hypervisor")
+        actualizar_mensaje_seguro("⚠️ Faltan requisitos: " + ", ".join(faltantes))
 
 def verificar_todo():
-    etiqueta_estado.config(text="🔎 Verificando requisitos del sistema...")
+    actualizar_mensaje_seguro("🔎 Verificando requisitos del sistema...")
     root.update()
     estado_qemu = verificar_qemu()
     estado_archivos = verificar_archivos()
@@ -120,14 +154,24 @@ def simular_hypervisor():
     messagebox.showinfo("🔧 Modo Prueba", "Ahora se simula que Hypervisor está habilitado.")
     verificar_todo()
 
-def abrir_url(url):
-    import webbrowser
-    webbrowser.open(url)
+def embebir_ventana_qemu(pid, hwnd_contenedor):
+    def callback(hwnd, pid_target):
+        _, pid_hwnd = win32process.GetWindowThreadProcessId(hwnd)
+        if pid_hwnd == pid_target:
+            win32gui.SetParent(hwnd, hwnd_contenedor)
+            win32gui.SetWindowLong(hwnd, win32con.GWL_STYLE,
+                                   win32gui.GetWindowLong(hwnd, win32con.GWL_STYLE) & ~win32con.WS_OVERLAPPEDWINDOW)
+            win32gui.SetWindowPos(hwnd, None, 0, 0, 560, 300, win32con.SWP_NOZORDER)
+            return False
+        return True
+    for _ in range(20):
+        win32gui.EnumWindows(lambda hwnd, _: callback(hwnd, pid), None)
+        time.sleep(0.5)
 
 def iniciar_maquina_virtual():
     barra_progreso.set(0)
     barra_widget.pack()
-    etiqueta_estado.config(text="🔓 Descifrando la imagen, espera un momento...")
+    actualizar_mensaje_seguro("🔓 Descifrando la imagen, espera un momento...")
     boton_iniciar.config(state=tk.DISABLED)
 
     def actualizar_barra(valor):
@@ -135,9 +179,28 @@ def iniciar_maquina_virtual():
 
     def tarea():
         try:
-            output_bat = descifrar_img(ENC_FILE, progreso_callback=actualizar_barra)
-            etiqueta_estado.config(text="✅ Imagen descifrada. Iniciando VM...")
-            subprocess.Popen(["cmd", "/c", output_bat], creationflags=subprocess.CREATE_NO_WINDOW)
+            output_img, lock_file, temp_dir, fingerprint = descifrar_img(ENC_FILE, clave_usuario, progreso_callback=actualizar_barra)
+            if not os.path.exists(lock_file):
+                raise Exception("❌ No se encontró archivo de validación.")
+            with open(lock_file, 'r') as f:
+                token = f.read().strip()
+            if token != fingerprint:
+                raise Exception("❌ Entorno no autorizado.")
+            actualizar_mensaje_seguro("✅ Imagen descifrada. Iniciando VM...")
+            cmd = [
+                QEMU_EXECUTABLE,
+                "-m", "2048",
+                "-smp", "2",
+                "-hda", output_img,
+                "-net", "nic",
+                "-net", "user",
+                "-accel", "whpx",
+                "-display", "sdl",
+                "-drive", f"file=fat:rw:{temp_dir},format=raw,media=disk"
+            ]
+            proc = subprocess.Popen(cmd)
+            time.sleep(1)
+            embebir_ventana_qemu(proc.pid, frame_vm.winfo_id())
         except Exception as e:
             log_error("Error en iniciar_maquina_virtual: " + traceback.format_exc())
             messagebox.showerror("❌ Error", f"No se pudo descifrar correctamente:\n{str(e)}")
@@ -162,29 +225,21 @@ def limpiar_archivos_temporales():
 
 root.protocol("WM_DELETE_WINDOW", lambda: (limpiar_archivos_temporales(), root.destroy()))
 
-# GUI principal
-root.deiconify()
-root.title("Bot Fishing")
-root.geometry("560x400")
-
-tk.Label(root, text="Bot Fishing Habbo Origins - Entorno Seguro", font=("Arial", 14)).pack(pady=10)
-etiqueta_estado = tk.Label(root, text="🔃 Cargando...", font=("Arial", 10))
-etiqueta_estado.pack()
-
 frame_botones = tk.Frame(root)
 frame_botones.pack(pady=10)
 
 tk.Button(frame_botones, text="Reverificar requisitos", command=verificar_todo).grid(row=0, column=0, padx=5)
 arquitectura = platform.architecture()[0]
 url_qemu = "https://qemu.weilnetz.de/w64/" if arquitectura == "64bit" else "https://qemu.weilnetz.de/w32/"
-boton_descargar_qemu = tk.Button(frame_botones, text=f"Descargar QEMU {arquitectura}", command=lambda: abrir_url(url_qemu))
+boton_descargar_qemu = tk.Button(frame_botones, text=f"Descargar QEMU {arquitectura}", command=lambda: os.system(f'start {url_qemu}'))
 boton_descargar_qemu.grid(row=1, column=0, padx=5)
 
 boton_habilitar_hypervisor = tk.Button(
     frame_botones,
     text="Habilitar Hypervisor (admin)",
     command=lambda: os.system(
-        "start powershell -Command \"Start-Process powershell -ArgumentList 'Enable-WindowsOptionalFeature -Online -FeatureName HypervisorPlatform -All' -Verb runAs\"")
+        "start powershell -Command \"Start-Process powershell -ArgumentList 'Enable-WindowsOptionalFeature -Online -FeatureName HypervisorPlatform -All' -Verb runAs\""
+    )
 )
 boton_habilitar_hypervisor.grid(row=2, column=0, padx=5)
 

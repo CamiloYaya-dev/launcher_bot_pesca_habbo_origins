@@ -1,4 +1,4 @@
-# 🔐 Entorno Seguro Virtualizado para Habbo Origins
+# 🔐 Launcher Bot Pesca Habbo Origins
 
 Este proyecto proporciona un entorno seguro basado en máquina virtual para ejecutar herramientas automatizadas en Habbo Origins, incluyendo cifrado/descifrado de imágenes, validación de licencias, y ejecución encapsulada con QEMU.
 

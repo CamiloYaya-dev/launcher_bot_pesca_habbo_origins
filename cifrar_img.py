@@ -6,7 +6,7 @@ import os
 
 clave = b'3n%QezhSAGk7$w!sdj29vn3v8zjNmc4q'  # 32 bytes
 input_file = 'tiny10.img'
-output_file = 'tiny10.img.enc'
+output_file = '3ZuxE7bre0kypSqM76n5dkak7zZBu0'
 block_size = 64 * 1024  # 64 KB
 
 iv = get_random_bytes(16)
